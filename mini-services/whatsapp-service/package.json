@@ -1,0 +1,15 @@
+{
+  "name": "whatsapp-service",
+  "version": "1.0.0",
+  "description": "WhatsApp connection service using Baileys",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.22",
+    "socket.io": "^4.7.4",
+    "pino": "^8.17.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
