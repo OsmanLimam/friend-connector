@@ -310,10 +310,9 @@ export default function Home() {
                     <div className="text-center">
                       {store.qrCode ? (
                         <div>
-                          <div className="mb-4 rounded-lg border bg-white p-4">
-                            <pre className="text-xs leading-tight" style={{ fontFamily: 'monospace' }}>
-                              {store.qrCode}
-                            </pre>
+                          <div className="mb-4 rounded-lg border bg-white p-4 flex justify-center">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={store.qrCode} alt="WhatsApp QR code" className="h-64 w-64" />
                           </div>
                           <p className="text-sm text-muted-foreground">
                             Open WhatsApp → Linked Devices → Link a Device → Scan QR
