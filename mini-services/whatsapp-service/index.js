@@ -5,17 +5,19 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 
-const io = new Server(3003, {
+const PORT = Number(process.env.PORT) || 3003;
+
+const io = new Server(PORT, {
   cors: { origin: '*' },
   transports: ['websocket'],
 });
 
-console.log('WhatsApp Service running on port 3003');
+console.log(`WhatsApp Service running on port ${PORT}`);
 
 let sock = null;
 let authState = null;
 
-const AUTH_DIR = path.join(__dirname, 'auth-info-baileys');
+const AUTH_DIR = process.env.AUTH_DIR || path.join(__dirname, 'auth-info-baileys');
 
 async function connectWhatsApp() {
   try {

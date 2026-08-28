@@ -60,7 +60,7 @@ export default function Home() {
   useEffect(() => {
     if (store.useDemoMode) return;
 
-    const newSocket = io('http://localhost:3003', {
+    const newSocket = io(process.env.NEXT_PUBLIC_WHATSAPP_URL || 'http://localhost:3003', {
       transports: ['websocket'],
       autoConnect: false,
     });
