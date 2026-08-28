@@ -85,12 +85,28 @@ io.on('connection', (socket) => {
       }
 
       const groups = await sock.groupFetchAllParticipating();
-      const groupList = Object.entries(groups).map(([id, group]) => ({
-        id,
-        name: group.subject || 'Unknown Group',
-        participantCount: group.participants?.length || 0,
-        participants: [],
-      }));
+      const entries = Object.entries(groups);
+
+      // Fetch full metadata in small batches so member counts are accurate
+      // (list query alone can return lite metadata with only a few participants)
+      const metas = [];
+      for (let i = 0; i < entries.length; i += 10) {
+        const batch = entries.slice(i, i + 10);
+        const results = await Promise.all(
+          batch.map(([id]) => sock.groupMetadata(id).catch(() => null))
+        );
+        metas.push(...results);
+      }
+
+      const groupList = entries.map(([id, group], idx) => {
+        const meta = metas[idx] || group;
+        return {
+          id,
+          name: meta.subject || group.subject || 'Unknown Group',
+          participantCount: meta.participants?.length || group.participants?.length || 0,
+          participants: [],
+        };
+      });
 
       console.log(`Found ${groupList.length} groups`);
       socket.emit('groups', groupList);
@@ -110,11 +126,27 @@ io.on('connection', (socket) => {
       let allContacts = [];
 
       for (const groupId of groupIds) {
-        const group = groups[groupId];
-        if (!group?.participants) continue;
+        let group = groups[groupId];
+        let participants = (group && group.participants) ? [...group.participants] : [];
 
-        const contacts = group.participants
-          .filter((p) => !p.admin) // Skip admins if you want
+        // groupFetchAllParticipating can return lite metadata with only a few
+        // participants. Fetch full metadata per group and merge for the complete list.
+        try {
+          const full = await sock.groupMetadata(groupId);
+          if (full?.participants?.length) {
+            const seen = new Set(participants.map((p) => p.id));
+            for (const p of full.participants) {
+              if (!seen.has(p.id)) {
+                participants.push(p);
+                seen.add(p.id);
+              }
+            }
+          }
+        } catch (e) {
+          // Full metadata unavailable, fall back to what we already have
+        }
+
+        const contacts = participants
           .map((p) => ({
             id: p.id,
             name: '', // Baileys doesn't provide names in group metadata
