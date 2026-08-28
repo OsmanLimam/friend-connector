@@ -192,7 +192,8 @@ io.on('connection', (socket) => {
 
     for (const contact of contacts) {
       try {
-        const jid = contact.number.includes('@') ? contact.number : `${contact.number}@s.whatsapp.net`;
+        const digits = String(contact.number || '').replace(/\D/g, '');
+        const jid = contact.number.includes('@') ? contact.number : `${digits}@s.whatsapp.net`;
         
         await sock.sendMessage(jid, { text: message });
         sent++;

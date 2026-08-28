@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatPhone } from '@/lib/phone';
 
 const DEMO_GROUPS = [
   { id: 'demo-1', name: 'Tech Enthusiasts Nairobi', participantCount: 247, participants: [] },
@@ -86,14 +87,23 @@ export default function Home() {
     });
 
     newSocket.on('contacts-extracted', (data: { groupId: string; contacts: any[] }) => {
-      const newContacts = data.contacts.map((c) => ({
-        id: c.id || `c-${Date.now()}-${Math.random()}`,
-        name: c.name || c.pushName || 'Unknown',
-        number: c.number || c.id?.split('@')[0] || '',
-        groupName: store.groups.find((g) => g.id === data.groupId)?.name,
-        status: 'pending' as const,
-      }));
-      store.addContacts(newContacts);
+      const existing = new Set(
+        store.contacts.map((c) => c.number.replace(/\D/g, ''))
+      );
+      const newContacts = data.contacts
+        .map((c) => {
+          const phone = formatPhone(c.number || c.id?.split('@')[0] || '');
+          return {
+            id: c.id || `c-${Date.now()}-${Math.random()}`,
+            name: c.name || c.pushName || 'Unknown',
+            number: phone.e164,
+            groupName: store.groups.find((g) => g.id === data.groupId)?.name,
+            status: 'pending' as const,
+          };
+        })
+        .filter((c) => c.number && !existing.has(c.number.replace(/\D/g, '')));
+      newContacts.forEach((c) => existing.add(c.number.replace(/\D/g, '')));
+      if (newContacts.length) store.addContacts(newContacts);
     });
 
     newSocket.on('bulk-progress', (data: any) => {
@@ -247,34 +257,92 @@ export default function Home() {
     saved: 'default',
   };
 
+  const countriesCount = new Set(
+    store.contacts
+      .map((c) => formatPhone(c.number).countryName)
+      .filter((n) => n !== 'Unknown')
+  ).size;
+
+  const initials = (name: string) =>
+    name === 'Unknown'
+      ? '?'
+      : name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() || '').join('');
+
+  const statusDot = {
+    disconnected: 'bg-red-500',
+    connecting: 'bg-amber-500 animate-pulse',
+    connected: 'bg-emerald-500 animate-pulse',
+    demo: 'bg-blue-500',
+  }[store.connectionStatus];
+
+  const statusLabel = {
+    disconnected: 'Offline',
+    connecting: 'Connecting...',
+    connected: 'WhatsApp Connected',
+    demo: 'Demo Mode',
+  }[store.connectionStatus];
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-emerald-50/40 dark:to-emerald-950/10">
       <div className="mx-auto max-w-6xl p-4 md:p-8">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Friend Connector</h1>
-            <p className="text-muted-foreground mt-1">
-              Extract contacts from WhatsApp groups & send connect messages
-            </p>
-          </div>
+        <div className="mb-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Label htmlFor="demo-mode" className="text-sm">Demo Mode</Label>
-            <Switch
-              id="demo-mode"
-              checked={store.useDemoMode}
-              onCheckedChange={store.setUseDemoMode}
-            />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-2xl shadow-lg shadow-emerald-500/20">
+              🤝
+            </div>
+            <div>
+              <h1 className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent">
+                Friend Connector
+              </h1>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                Extract contacts from WhatsApp groups & send connect messages
+              </p>
+            </div>
           </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 shadow-sm">
+              <span className={`h-2.5 w-2.5 rounded-full ${statusDot}`} />
+              <span className="text-sm font-medium">{statusLabel}</span>
+            </div>
+            <div className="hidden items-center gap-2 sm:flex">
+              <Label htmlFor="demo-mode" className="text-sm">Demo</Label>
+              <Switch
+                id="demo-mode"
+                checked={store.useDemoMode}
+                onCheckedChange={store.setUseDemoMode}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Groups', value: store.groups.length, icon: '👥' },
+            { label: 'Contacts', value: store.contacts.length, icon: '📇' },
+            { label: 'Countries', value: countriesCount, icon: '🌍' },
+            { label: 'Selected', value: store.selectedContacts.length, icon: '✅' },
+          ].map((s) => (
+            <div key={s.label} className="rounded-2xl border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold">{s.value}</span>
+                <span className="text-xl">{s.icon}</span>
+              </div>
+              <p className="text-muted-foreground mt-1 text-xs font-medium uppercase tracking-wide">
+                {s.label}
+              </p>
+            </div>
+          ))}
         </div>
 
         {/* Main Tabs */}
         <Tabs defaultValue="connect" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="connect">Connect</TabsTrigger>
-            <TabsTrigger value="groups">Groups</TabsTrigger>
-            <TabsTrigger value="message">Message</TabsTrigger>
-            <TabsTrigger value="contacts">Contacts</TabsTrigger>
+          <TabsList className="grid h-12 w-full grid-cols-4 rounded-2xl border bg-card/80 p-1 shadow-sm backdrop-blur">
+            <TabsTrigger className="rounded-xl data-[state=active]:bg-emerald-500 data-[state=active]:text-white" value="connect">Connect</TabsTrigger>
+            <TabsTrigger className="rounded-xl data-[state=active]:bg-emerald-500 data-[state=active]:text-white" value="groups">Groups</TabsTrigger>
+            <TabsTrigger className="rounded-xl data-[state=active]:bg-emerald-500 data-[state=active]:text-white" value="message">Message</TabsTrigger>
+            <TabsTrigger className="rounded-xl data-[state=active]:bg-emerald-500 data-[state=active]:text-white" value="contacts">Contacts</TabsTrigger>
           </TabsList>
 
           {/* CONNECT TAB */}
@@ -383,20 +451,30 @@ export default function Home() {
                       {store.groups.map((group) => (
                         <div
                           key={group.id}
-                          className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent/50 cursor-pointer"
+                          className={`flex items-center gap-3 rounded-xl border p-3 transition-all cursor-pointer hover:shadow-md ${
+                            store.selectedGroups.includes(group.id)
+                              ? 'border-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                              : 'hover:bg-accent/50'
+                          }`}
                           onClick={() => store.toggleGroupSelection(group.id)}
                         >
                           <Checkbox
                             checked={store.selectedGroups.includes(group.id)}
                             onCheckedChange={() => store.toggleGroupSelection(group.id)}
                           />
-                          <div className="flex-1">
-                            <div className="font-medium">{group.name}</div>
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900 dark:to-teal-900 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                            {group.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{group.name}</div>
                             <div className="text-sm text-muted-foreground">
                               {group.participantCount} participants
                             </div>
                           </div>
-                          <Badge variant="outline">
+                          <Badge
+                            variant="outline"
+                            className={store.selectedGroups.includes(group.id) ? 'border-emerald-500 text-emerald-600' : ''}
+                          >
                             {group.participantCount}
                           </Badge>
                         </div>
@@ -667,38 +745,60 @@ export default function Home() {
                 ) : (
                   <ScrollArea className="h-[500px]">
                     <div className="space-y-1">
-                      {filteredContacts.map((contact) => (
-                        <div
-                          key={contact.id}
-                          className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent/50"
-                        >
-                          <Checkbox
-                            checked={store.selectedContacts.includes(contact.id)}
-                            onCheckedChange={() =>
-                              store.toggleContactSelection(contact.id)
-                            }
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{contact.name}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {contact.number}
-                              {contact.groupName && ` · ${contact.groupName}`}
+                      {filteredContacts.map((contact) => {
+                        const phone = formatPhone(contact.number);
+                        return (
+                          <div
+                            key={contact.id}
+                            className={`flex items-center gap-3 rounded-xl border p-3 transition-all hover:shadow-md hover:bg-accent/50 ${
+                              store.selectedContacts.includes(contact.id)
+                                ? 'border-emerald-500/60 bg-emerald-50/50 dark:bg-emerald-950/20'
+                                : ''
+                            }`}
+                          >
+                            <Checkbox
+                              checked={store.selectedContacts.includes(contact.id)}
+                              onCheckedChange={() =>
+                                store.toggleContactSelection(contact.id)
+                              }
+                            />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-sm font-bold text-slate-600 dark:text-slate-300">
+                              {initials(contact.name)}
                             </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium truncate">{contact.name}</span>
+                                <span className="shrink-0">{phone.flag}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-mono text-muted-foreground">
+                                  {phone.international || contact.number}
+                                </span>
+                                {phone.known && (
+                                  <span className="hidden rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 sm:inline">
+                                    {phone.countryName}
+                                  </span>
+                                )}
+                              </div>
+                              {contact.groupName && (
+                                <div className="text-xs text-muted-foreground truncate">via {contact.groupName}</div>
+                              )}
+                            </div>
+                            <Badge variant={statusColors[contact.status] || 'outline'}>
+                              {contact.status}
+                            </Badge>
+                            {contact.status !== 'saved' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSaveContact(contact)}
+                              >
+                                Save
+                              </Button>
+                            )}
                           </div>
-                          <Badge variant={statusColors[contact.status] || 'outline'}>
-                            {contact.status}
-                          </Badge>
-                          {contact.status !== 'saved' && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleSaveContact(contact)}
-                            >
-                              Save
-                            </Button>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </ScrollArea>
                 )}
