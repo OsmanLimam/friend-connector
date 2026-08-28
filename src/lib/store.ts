@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 export interface WhatsAppGroup {
   id: string;
@@ -79,9 +80,12 @@ interface AppState {
   setBulkProgress: (progress: Partial<BulkProgress>) => void;
   resetBulkProgress: () => void;
   updateContactStatus: (id: string, status: Contact['status']) => void;
+  removeContact: (id: string) => void;
+  removeSelectedContacts: () => void;
+  clearContacts: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>()(persist((set) => ({
   connectionStatus: 'disconnected',
   qrCode: null,
   useDemoMode: false,
@@ -154,4 +158,29 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       contacts: state.contacts.map((c) => (c.id === id ? { ...c, status } : c)),
     })),
+  removeContact: (id) =>
+    set((state) => ({
+      contacts: state.contacts.filter((c) => c.id !== id),
+      selectedContacts: state.selectedContacts.filter((c) => c !== id),
+    })),
+  removeSelectedContacts: () =>
+    set((state) => ({
+      contacts: state.contacts.filter((c) => !state.selectedContacts.includes(c.id)),
+      selectedContacts: [],
+    })),
+  clearContacts: () => set({ contacts: [], selectedContacts: [] }),
+}),
+{
+  name: 'friend-connector-storage',
+  version: 1,
+  storage: createJSONStorage(() => localStorage),
+  // Only keep data that should survive a page refresh.
+  // Connection status / QR / groups are session-bound, so they are NOT saved.
+  partialize: (state) => ({
+    contacts: state.contacts,
+    messageTemplates: state.messageTemplates,
+    activeTemplate: state.activeTemplate,
+    customMessage: state.customMessage,
+    useDemoMode: state.useDemoMode,
+  }),
 }));

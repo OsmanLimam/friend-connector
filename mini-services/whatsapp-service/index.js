@@ -116,6 +116,9 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Groups with fewer members than this are refused during extraction
+  const MIN_GROUP_SIZE = 20;
+
   // Extract contacts from selected groups
   socket.on('extract-contacts', async (data) => {
     try {
@@ -124,15 +127,18 @@ io.on('connection', (socket) => {
 
       const groups = await sock.groupFetchAllParticipating();
       let allContacts = [];
+      const skipped = [];
 
       for (const groupId of groupIds) {
         let group = groups[groupId];
         let participants = (group && group.participants) ? [...group.participants] : [];
+        let groupName = (group && group.subject) || groupId;
 
         // groupFetchAllParticipating can return lite metadata with only a few
         // participants. Fetch full metadata per group and merge for the complete list.
         try {
           const full = await sock.groupMetadata(groupId);
+          if (full?.subject) groupName = full.subject;
           if (full?.participants?.length) {
             const seen = new Set(participants.map((p) => p.id));
             for (const p of full.participants) {
@@ -144,6 +150,19 @@ io.on('connection', (socket) => {
           }
         } catch (e) {
           // Full metadata unavailable, fall back to what we already have
+        }
+
+        // Refuse groups that are too small (fewer than MIN_GROUP_SIZE members)
+        if (participants.length < MIN_GROUP_SIZE) {
+          console.log(`Skipped "${groupName}": only ${participants.length} members (min ${MIN_GROUP_SIZE})`);
+          skipped.push({ groupId, groupName, count: participants.length });
+          socket.emit('extract-skipped', {
+            groupId,
+            groupName,
+            count: participants.length,
+            min: MIN_GROUP_SIZE,
+          });
+          continue;
         }
 
         const contacts = participants
@@ -176,7 +195,7 @@ io.on('connection', (socket) => {
         });
       }
 
-      console.log(`Extracted ${allContacts.length} contacts from ${groupIds.length} groups`);
+      console.log(`Extracted ${allContacts.length} contacts from ${groupIds.length - skipped.length} groups (${skipped.length} skipped, under ${MIN_GROUP_SIZE} members)`);
     } catch (error) {
       console.error('Failed to extract contacts:', error);
     }

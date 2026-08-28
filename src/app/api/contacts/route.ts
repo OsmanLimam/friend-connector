@@ -46,12 +46,20 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const number = searchParams.get('number') || undefined;
 
-    if (!id) {
-      return NextResponse.json({ error: 'Contact ID required' }, { status: 400 });
+    if (!id && !number) {
+      return NextResponse.json({ error: 'Contact id or number required' }, { status: 400 });
     }
 
-    await prisma.contact.delete({ where: { id } });
+    if (id) {
+      await prisma.contact.delete({ where: { id } });
+    } else {
+      const existing = await prisma.contact.findUnique({ where: { number } });
+      if (existing) {
+        await prisma.contact.delete({ where: { number } });
+      }
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to delete contact:', error);
